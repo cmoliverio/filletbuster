@@ -12,7 +12,7 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            position: Point3::new(3.0, 3.0, 3.0),
+            position: Point3::new(5.0, 2.0, 5.0),
             target: Point3::new(0.0, 0.0, 0.0),
             yaw: -45.0f32.to_radians(),
             pitch: 35.264f32.to_radians(),
@@ -48,26 +48,25 @@ impl Camera {
     }
 
     pub fn forward_vector(&self) -> Point3 {
-        let yaw = self.yaw;
-        let pitch = self.pitch;
-        Point3::new(
-            yaw.cos() * pitch.cos(),
-            pitch.sin(),
-            yaw.sin() * pitch.cos(),
-        )
+        let direction = Point3::new(
+            self.target.x - self.position.x,
+            self.target.y - self.position.y,
+            self.target.z - self.position.z,
+        );
+        normalize(direction)
     }
 
     pub fn right_vector(&self) -> Point3 {
         let forward = self.forward_vector();
-        let world_up = Point3::new(0.0, 1.0, 0.0);
-        let cross = cross(world_up, forward);
+        let world_up = Point3::new(0.0, 0.0, 1.0);
+        let cross = cross(forward, world_up);
         normalize(cross)
     }
 
     pub fn up_vector(&self) -> Point3 {
         let forward = self.forward_vector();
         let right = self.right_vector();
-        cross(forward, right)
+        cross(right, forward)
     }
 }
 

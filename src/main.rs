@@ -10,10 +10,10 @@ use render_options::{Color, ProjectionKind, RenderOptions};
 
 fn main() {
     let mut graph = BRepGraph::new();
-    let a = graph.add_vertex(Point3::new(0.0, 0.0, 0.0));
-    let b = graph.add_vertex(Point3::new(1.0, 0.0, 0.0));
-    let c = graph.add_vertex(Point3::new(1.0, 1.0, 0.0));
-    let d = graph.add_vertex(Point3::new(0.0, 1.0, 0.0));
+    let a = graph.add_vertex(Point3::new(-0.5, -0.5, 0.0));
+    let b = graph.add_vertex(Point3::new(0.5, -0.5, 0.0));
+    let c = graph.add_vertex(Point3::new(0.5, 0.5, 0.0));
+    let d = graph.add_vertex(Point3::new(-0.5, 0.5, 0.0));
 
     let ab = graph.add_edge(a, b);
     let bc = graph.add_edge(b, c);
@@ -85,17 +85,34 @@ fn render_graph(
         let Some((from, to)) = edge.endpoints() else {
             continue;
         };
-        let p0 = graph.vertex_position(from);
-        let p1 = graph.vertex_position(to);
-        let start = project_point(p0, center_x, center_y, scale, angle, render_options, camera);
-        let end = project_point(p1, center_x, center_y, scale, angle, render_options, camera);
+        let p0 = rotate_z(graph.vertex_position(from), angle);
+        let p1 = rotate_z(graph.vertex_position(to), angle);
+        let start = project_point(p0, center_x, center_y, scale, render_options, camera);
+        let end = project_point(p1, center_x, center_y, scale, render_options, camera);
         draw_line(buffer, width, height, start, end, render_options.edge_color.to_u32());
     }
 
+    let axis_length = 0.25;
+    let axis_lines = [
+        (Point3::new(0.0, 0.0, 0.0), Point3::new(axis_length, 0.0, 0.0), 0xFF0000_u32),
+        (Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, axis_length, 0.0), 0x00FF00_u32),
+        (Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, axis_length), 0x0000FF_u32),
+    ];
+
+    for (from, to, color) in axis_lines {
+        let start = project_point(from, center_x, center_y, scale, render_options, camera);
+        let end = project_point(to, center_x, center_y, scale, render_options, camera);
+        draw_line(buffer, width, height, start, end, color);
+    }
+
     for point in graph.vertices() {
-        let projected = project_point(point, center_x, center_y, scale, angle, render_options, camera);
+        let rotated = rotate_z(point, angle);
+        let projected = project_point(rotated, center_x, center_y, scale, render_options, camera);
         draw_point(buffer, width, height, projected, render_options.vertex_color.to_u32());
     }
+
+    let origin = project_point(Point3::new(0.0, 0.0, 0.0), center_x, center_y, scale, render_options, camera);
+    draw_point(buffer, width, height, origin, 0xFF0000_u32);
 }
 
 fn project_point(
@@ -103,23 +120,15 @@ fn project_point(
     center_x: f32,
     center_y: f32,
     scale: f32,
-    angle: f32,
     render_options: &RenderOptions,
     camera: &Camera,
 ) -> (i32, i32) {
     let view = camera.view_matrix();
-    let mut world = point;
+    let world = point;
 
-    let cos_a = angle.cos();
-    let sin_a = angle.sin();
-    let x = world.x * cos_a - world.z * sin_a;
-    let z = world.x * sin_a + world.z * cos_a;
-    world.x = x;
-    world.z = z;
-
-    let view_x = world.x - camera.position.x;
-    let view_y = world.y - camera.position.y;
-    let view_z = world.z - camera.position.z;
+    let view_x = view[0] * world.x + view[4] * world.y + view[8] * world.z + view[12];
+    let view_y = view[1] * world.x + view[5] * world.y + view[9] * world.z + view[13];
+    let view_z = view[2] * world.x + view[6] * world.y + view[10] * world.z + view[14];
 
     let (screen_x, screen_y) = match render_options.projection_kind {
         ProjectionKind::Orthographic => {
@@ -128,7 +137,7 @@ fn project_point(
             (screen_x, screen_y)
         }
         ProjectionKind::Perspective => {
-            let depth = 3.0 + view_z;
+            let depth = -view_z.max(-0.1);
             let screen_x = center_x + (view_x * scale) / depth;
             let screen_y = center_y - (view_y * scale) / depth;
             (screen_x, screen_y)
@@ -136,6 +145,16 @@ fn project_point(
     };
 
     (screen_x as i32, screen_y as i32)
+}
+
+fn rotate_z(point: Point3, angle: f32) -> Point3 {
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+    Point3::new(
+        point.x * cos_a - point.y * sin_a,
+        point.x * sin_a + point.y * cos_a,
+        point.z,
+    )
 }
 
 fn draw_point(buffer: &mut [u32], width: usize, height: usize, point: (i32, i32), color: u32) {
